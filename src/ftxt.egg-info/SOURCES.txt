@@ -1,0 +1,9 @@
+README.md
+pyproject.toml
+src/ftxt/__init__.py
+src/ftxt/cli.py
+src/ftxt.egg-info/PKG-INFO
+src/ftxt.egg-info/SOURCES.txt
+src/ftxt.egg-info/dependency_links.txt
+src/ftxt.egg-info/entry_points.txt
+src/ftxt.egg-info/top_level.txt

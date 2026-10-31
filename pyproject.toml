@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ftxt"
+version = "0.1.0"
+description = "Strict codebase-to-text bundler with in-place updates and ACID guarantees."
+readme = "README.md"
+authors = [{ name = "germanter" }]
+license = { text = "MIT" }
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Environment :: Console",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Build Tools",
+]
+
+[project.scripts]
+ftxt = "ftxt.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
