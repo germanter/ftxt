@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ftxt"
-version = "0.2.0"
+version = "0.2.1"
 description = "Strict codebase-to-text bundler with in-place updates and ACID guarantees."
 readme = "README.md"
 authors = [{ name = "germanter" }]
