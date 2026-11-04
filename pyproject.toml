@@ -1,14 +1,14 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=77.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "ftxt"
-version = "0.2.1"
+dynamic = ["version"]
 description = "Strict codebase-to-text bundler with in-place updates and ACID guarantees."
 readme = "README.md"
 authors = [{ name = "germanter" }]
-license = { text = "MIT" }
+license = "MIT"
 requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -19,6 +19,9 @@ classifiers = [
 
 [project.scripts]
 ftxt = "ftxt.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "ftxt.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]

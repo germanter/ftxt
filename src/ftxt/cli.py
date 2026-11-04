@@ -1,3 +1,4 @@
+import os
 import shlex
 import sys
 from pathlib import Path
@@ -323,7 +324,33 @@ def cmd_write(args: list[str]) -> None:
     commit_write(active_file, args)
 
 
+def cmd_clear(args: list[str]) -> None:
+    if args:
+        raise ValueError("clear takes no arguments")
+
+    os.system("cls" if os.name == "nt" else "clear")
+
+
 def cmd_help() -> None:
+    help_text = (
+        "  cd <folder>                 Select folder, 'cd .' returns to root (alias: selectfolder)\n"
+        "  mkdirc <folder>             Create folder from root, auto-indexed, selection unchanged\n"
+        "                              (aliases: mkdir, openfolder, createfolder)\n"
+        "  mkf <name>                  Create indexed .txt file and select it (aliases: openfile, open)\n"
+        "  rmf <target>                Delete .txt file, selection unchanged (alias: delfile)\n"
+        "  writo <target> [paths...]   Select .txt file (created if missing), optionally write paths\n"
+        "  write to <target> [paths..] Same as writo\n"
+        "  write <path...>             Write/update paths into the selected .txt file\n"
+        "  inspect [target]            List records, selects the file\n"
+        "  clear                       Clear the terminal screen (alias: cls)\n"
+        "  help                        Show command list\n"
+        "  fullhelp                    Show full manual (rules, record format)\n"
+        "  exit                        Terminate session (alias: quit)"
+    )
+    print(help_text)
+
+
+def cmd_fullhelp() -> None:
     help_text = (
         "rules:\n"
         "  every path resolves from the root (where ftxt was started)\n"
@@ -336,12 +363,15 @@ def cmd_help() -> None:
         "                              (aliases: mkdir, openfolder, createfolder)\n"
         "\n"
         "files:\n"
-        "  mkf <name>                  Create indexed .txt file and select it (alias: openfile)\n"
+        "  mkf <name>                  Create indexed .txt file and select it (aliases: openfile, open)\n"
         "  rmf <target>                Delete .txt file, selection unchanged (alias: delfile)\n"
         "  writo <target> [paths...]   Select .txt file (created if missing), optionally write paths\n"
         "  write to <target> [paths..] Same as writo\n"
         "  write <path...>             Write/update paths into the selected .txt file\n"
         "  inspect [target]            List records, selects the file\n"
+        "\n"
+        "terminal:\n"
+        "  clear                       Clear the terminal screen (alias: cls)\n"
         "\n"
         "record format:\n"
         "  >---\n"
@@ -349,7 +379,8 @@ def cmd_help() -> None:
         "  <content>\n"
         "  >---\n"
         "\n"
-        "  help                        Show manual\n"
+        "  help                        Show command list\n"
+        "  fullhelp                    Show this manual\n"
         "  exit                        Terminate session (alias: quit)"
     )
     print(help_text)
@@ -375,6 +406,8 @@ COMMANDS = {
     "writo": cmd_writo,
     "write": cmd_write,
     "inspect": cmd_inspect,
+    "clear": cmd_clear,
+    "cls": cmd_clear,
 }
 
 
@@ -396,6 +429,8 @@ def main() -> None:
                 sys.exit(0)
             elif cmd == "help":
                 cmd_help()
+            elif cmd == "fullhelp":
+                cmd_fullhelp()
             elif cmd in COMMANDS:
                 COMMANDS[cmd](args)
             else:
