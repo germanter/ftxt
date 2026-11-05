@@ -389,11 +389,16 @@ def resolve_source_files(source_str: str, is_ignored) -> list[Path]:
     raise ValueError(f"unsupported path type: {source_str}")
 
 
-def build_scan(is_ignored, exclude: Path | None = None) -> str:
+def build_scan(is_ignored, exclude: Path | None = None, ascii_only: bool = False) -> str:
     """Tree x-ray of the whole root. Ignored entries are left out, folders first, A-Z."""
+    if ascii_only:
+        tee, end, pipe, blank = "|-- ", "`-- ", "|   ", "    "
+    else:
+        tee, end, pipe, blank = "\u251c\u2500\u2500 ", "\u2514\u2500\u2500 ", "\u2502   ", "    "
+
     lines = [(ROOT_DIR.name or "/") + "/"]
 
-    def walk(folder: Path, depth: int) -> None:
+    def walk(folder: Path, prefix: str) -> None:
         try:
             entries = list(os.scandir(folder))
         except OSError:
@@ -414,14 +419,16 @@ def build_scan(is_ignored, exclude: Path | None = None) -> str:
             elif p != exclude and not is_ignored(p):
                 files.append(entry.name)
 
-        pad = "  " * depth
-        for name in sorted(dirs, key=str.casefold):
-            lines.append(f"{pad}{name}/")
-            walk(folder / name, depth + 1)
-        for name in sorted(files, key=str.casefold):
-            lines.append(f"{pad}{name}")
+        items = [(n, True) for n in sorted(dirs, key=str.casefold)]
+        items += [(n, False) for n in sorted(files, key=str.casefold)]
 
-    walk(ROOT_DIR, 1)
+        for i, (name, is_dir) in enumerate(items):
+            last = i == len(items) - 1
+            lines.append(f"{prefix}{end if last else tee}{name}{'/' if is_dir else ''}")
+            if is_dir:
+                walk(folder / name, prefix + (blank if last else pipe))
+
+    walk(ROOT_DIR, "")
     return "\n".join(lines)
 
 
@@ -517,7 +524,14 @@ def cmd_scan(args: list[str]) -> None:
     if len(sources) > 1 or any(s != "." for s in sources):
         raise ValueError("*scan always covers the whole root: use '*scan' or '*scan .'")
 
-    print(build_scan(build_ignore_matcher(ignore_items, modes)))
+    is_ignored = build_ignore_matcher(ignore_items, modes)
+    text = build_scan(is_ignored)
+    try:
+        text.encode(sys.stdout.encoding or "utf-8")
+    except UnicodeEncodeError:
+        # terminal can't show box drawing characters: ascii look for the screen only
+        text = build_scan(is_ignored, ascii_only=True)
+    print(text)
 
 
 def cmd_mkdirc(args: list[str]) -> None:
