@@ -9,6 +9,7 @@ ROOT_DIR = Path.cwd().resolve()
 FENCE = ">---"
 HEADER_PREFIX = "> "
 IGNORE_KEYWORD = "*ignore"
+SCAN_KEY = "*scan"
 SNIFF_BYTES = 8192
 
 active_folder: Path = ROOT_DIR
@@ -49,6 +50,8 @@ def locate_file(name: str) -> tuple[Path, Path]:
     cleaned = name.replace("\\", "/").strip().strip("/")
     p = Path(cleaned)
     if not cleaned or p.name in ("", ".", ".."):
+        raise ValueError(f"invalid file name: {name}")
+    if "*" in cleaned:
         raise ValueError(f"invalid file name: {name}")
     if p.suffix and p.suffix != ".txt":
         raise ValueError(f"target is not a .txt file: {name}")
@@ -386,9 +389,43 @@ def resolve_source_files(source_str: str, is_ignored) -> list[Path]:
     raise ValueError(f"unsupported path type: {source_str}")
 
 
-def collect_payloads(source_args: list[str], ignore_items: list[str], modes: set[str], exclude: Path) -> list[tuple[str, str]]:
-    is_ignored = build_ignore_matcher(ignore_items, modes)
+def build_scan(is_ignored, exclude: Path | None = None) -> str:
+    """Tree x-ray of the whole root. Ignored entries are left out, folders first, A-Z."""
+    lines = [(ROOT_DIR.name or "/") + "/"]
 
+    def walk(folder: Path, depth: int) -> None:
+        try:
+            entries = list(os.scandir(folder))
+        except OSError:
+            return
+
+        dirs: list[str] = []
+        files: list[str] = []
+        for entry in entries:
+            p = Path(entry.path)
+            try:
+                entry_is_dir = entry.is_dir(follow_symlinks=False)
+            except OSError:
+                entry_is_dir = False
+
+            if entry_is_dir:
+                if not is_ignored(p, True):
+                    dirs.append(entry.name)
+            elif p != exclude and not is_ignored(p):
+                files.append(entry.name)
+
+        pad = "  " * depth
+        for name in sorted(dirs, key=str.casefold):
+            lines.append(f"{pad}{name}/")
+            walk(folder / name, depth + 1)
+        for name in sorted(files, key=str.casefold):
+            lines.append(f"{pad}{name}")
+
+    walk(ROOT_DIR, 1)
+    return "\n".join(lines)
+
+
+def collect_payloads(source_args: list[str], is_ignored, exclude: Path, allow_empty: bool = False) -> list[tuple[str, str]]:
     files: list[Path] = []
     for src in source_args:
         files.extend(resolve_source_files(src, is_ignored))
@@ -410,6 +447,12 @@ def collect_payloads(source_args: list[str], ignore_items: list[str], modes: set
         content = content.rstrip("\r\n")
         path = rel(f)
 
+        if path == SCAN_KEY:
+            if single:
+                raise ValueError(f"'{path}' is a reserved record name")
+            print(f"skipped {path} for using reserved record name")
+            continue
+
         if any(is_fence(line) for line in content.split("\n")):
             if single:
                 raise ValueError(f"'{path}' contains reserved line '{FENCE}'")
@@ -421,7 +464,7 @@ def collect_payloads(source_args: list[str], ignore_items: list[str], modes: set
     if skipped:
         print(f"skipped {skipped} binary/unreadable file(s)")
 
-    if not payloads:
+    if not payloads and not allow_empty:
         raise FileNotFoundError("nothing to write")
 
     return payloads
@@ -431,11 +474,17 @@ def commit_write(target: Path, source_args: list[str]) -> None:
     if not target.parent.is_dir():
         raise FileNotFoundError(f"destination directory does not exist: {rel(target.parent)}")
 
-    sources, ignore_items, modes = split_ignore(source_args)
-    if not sources:
+    # '*scan' can sit anywhere in the arguments
+    scan = any(a.lower() == SCAN_KEY for a in source_args)
+    args = [a for a in source_args if a.lower() != SCAN_KEY]
+
+    sources, ignore_items, modes = split_ignore(args)
+    if not sources and not scan:
         raise ValueError(f"no source paths given before '{IGNORE_KEYWORD}'")
 
-    payloads = collect_payloads(sources, ignore_items, modes, target.resolve())
+    is_ignored = build_ignore_matcher(ignore_items, modes)
+    payloads = collect_payloads(sources, is_ignored, target.resolve(), allow_empty=scan)
+    scan_text = build_scan(is_ignored, target.resolve()) if scan else None
 
     existing: list[tuple[str, str]] = []
     if target.exists() and target.read_text(encoding="utf-8").strip():
@@ -452,10 +501,23 @@ def commit_write(target: Path, source_args: list[str]) -> None:
             index_map[path] = len(existing)
             existing.append((path, content))
 
+    if scan_text is not None:
+        # the scan record is replaced if present and always goes first
+        existing = [e for e in existing if e[0] != SCAN_KEY]
+        existing.insert(0, (SCAN_KEY, scan_text))
+
     with open(target, "w", encoding="utf-8", newline="\n") as out:
         out.write(render_entries(existing))
 
     print("roger")
+
+
+def cmd_scan(args: list[str]) -> None:
+    sources, ignore_items, modes = split_ignore(args)
+    if len(sources) > 1 or any(s != "." for s in sources):
+        raise ValueError("*scan always covers the whole root: use '*scan' or '*scan .'")
+
+    print(build_scan(build_ignore_matcher(ignore_items, modes)))
 
 
 def cmd_mkdirc(args: list[str]) -> None:
@@ -624,7 +686,9 @@ def cmd_help() -> None:
         "                              in batch writes (folder / many sources) files containing '>---' are skipped\n"
         "  ... *ignore-all (*ignorex)  Skip by root .gitignore + .ftxtignore rules, names may follow\n"
         "  ... *ignore-i / *ignore-f   Only .gitignore / only .ftxtignore\n"
+        "  ... *scan                   Append to any write: root tree goes in as record '*scan', always first\n"
         "  inspect [target]            List records, selects the file\n"
+        "  *scan [.]                   Print a tree x-ray of the whole root (takes *ignore keywords)\n"
         "  clear                       Clear the terminal screen (alias: cls)\n"
         "  help                        Show command list\n"
         "  fullhelp                    Show full manual (rules, record format)\n"
@@ -658,7 +722,9 @@ def cmd_fullhelp() -> None:
         "                              in batch writes (folder / many sources) files containing '>---' are skipped\n"
         "  ... *ignore-all (*ignorex)  Skip by root .gitignore + .ftxtignore rules, names may follow\n"
         "  ... *ignore-i / *ignore-f   Only .gitignore / only .ftxtignore\n"
+        "  ... *scan                   Append to any write: root tree goes in as record '*scan', always first\n"
         "  inspect [target]            List records, selects the file\n"
+        "  *scan [.]                   Print a tree x-ray of the whole root (takes *ignore keywords)\n"
         "\n"
         "terminal:\n"
         "  clear                       Clear the terminal screen (alias: cls)\n"
@@ -697,6 +763,7 @@ COMMANDS = {
     "trunc": cmd_empty,
     "truncate": cmd_empty,
     "writo": cmd_writo,
+    SCAN_KEY: cmd_scan,
     "write": cmd_write,
     "inspect": cmd_inspect,
     "clear": cmd_clear,
